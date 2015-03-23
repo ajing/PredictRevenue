@@ -8,7 +8,7 @@ from sklearn.feature_extraction import DictVectorizer
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 import numpy as np
-data_dir='../../data/'
+data_dir='./Data/'
 train = pd.read_csv(data_dir + 'train.csv')
 test = pd.read_csv(data_dir + 'test.csv')
 vec = DictVectorizer()
