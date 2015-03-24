@@ -1,0 +1,24 @@
+---
+title: "basic_stat"
+output: html_document
+---
+
+Cleaning and some basic operation on data
+```{r}
+train_data <- read.csv("./Data/train.csv")
+test_data  <- read.csv("./Data/test.csv")
+train_data$Open.Date = as.Date(train_data$Open.Date, "%m/%d/%Y")
+test_data$Open.Date = as.Date(test_data$Open.Date, "%m/%d/%Y")
+```
+
+Basic statistics for each variable:
+```{r}
+summary(train_data)
+summary(test_data)
+```
+
+Correlation between individuals
+```{r, echo=FALSE}
+library("gplots")
+heatmap.2(as.matrix(train_data[, grepl( "P+" , names(train_data))]), scale="column")
+```
