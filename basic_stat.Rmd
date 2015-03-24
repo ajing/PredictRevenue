@@ -17,8 +17,23 @@ summary(train_data)
 summary(test_data)
 ```
 
+PCA analysis
+```{r}
+train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
+summary(train_pca)
+plot(train_pca)
+```
+
+```{r}
+biplot(train_pca,choices=c(1,2),cex=0.5)
+```
+
 Correlation between individuals
 ```{r, echo=FALSE}
 library("gplots")
 heatmap.2(as.matrix(train_data[, grepl( "P+" , names(train_data))]), scale="column")
+```
+
+```{r}
+pairs(~P1+P2+P3+P4+P5+P6+P7+P8,data=train_data)
 ```
