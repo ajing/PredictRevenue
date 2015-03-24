@@ -9,12 +9,25 @@ train_data <- read.csv("./Data/train.csv")
 test_data  <- read.csv("./Data/test.csv")
 train_data$Open.Date = as.Date(train_data$Open.Date, "%m/%d/%Y")
 test_data$Open.Date = as.Date(test_data$Open.Date, "%m/%d/%Y")
+levels(train_data$Type) = levels(test_data$Type)
+levels(train_data$City) = levels(test_data$City)
 ```
 
 Basic statistics for each variable:
 ```{r}
 summary(train_data)
 summary(test_data)
+```
+
+boxplot for revenue and P1-P37
+```{r}
+boxplot(train_data$revenue)
+boxplot(x = train_data[, grepl( "P+" , names(train_data))])
+```
+
+remove the outlier
+```{r}
+train_data = subset(train_data, revenue < 1e7)
 ```
 
 PCA analysis
@@ -65,4 +78,38 @@ summary(model)
 
 model <- lm(revenue ~ P1 + P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9 + P10 + P11 + P12 + P13 + P13 + P14 + P15 + P16 + P17 + P18 + P19 + P20 + P21 + P22 + P23 + P24 + P25 + P26,data = train_data)
 summary(model)
+```
+
+```{r}
+train_data_s = cbind(revenue = train_data[, "revenue"], train_data[, grepl( "P+" , names(train_data))])
+model <- lm(revenue ~ .,data = train_data_s)
+summary(model)
+pre_result_train <- predict(model, train_data_s)
+sqrt(sum((pre_result_train - train_data_s$revenue)^2))
+pre_result <- predict(model, test_data)
+```
+
+SVM
+```{r}
+library('e1071')
+obj <- tune.svm(revenue~., data = subset(train_data, select = -Id), gama = 2^(-10:1), cost = 2^(2:10))
+model <- obj$best.model
+pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))
+pre_result <- predict(model, subset(test_data, select = -Id))
+```
+
+randomForest
+```{r}
+library("randomForest")
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))))
+pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))
+pre_result <- predict(model, subset(test_data, select = -Id))
+```
+
+Save prediction to file
+```{r}
+
+write.csv(cbind(Id = test_data$Id, Prediction = pre_result), quote = F, row.names = F, file = "./predict_result.csv")
 ```
