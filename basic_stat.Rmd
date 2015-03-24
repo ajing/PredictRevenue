@@ -9,6 +9,8 @@ train_data <- read.csv("./Data/train.csv")
 test_data  <- read.csv("./Data/test.csv")
 train_data$Open.Date = as.Date(train_data$Open.Date, "%m/%d/%Y")
 test_data$Open.Date = as.Date(test_data$Open.Date, "%m/%d/%Y")
+levels(train_data$Type) = levels(test_data$Type)
+levels(train_data$City) = levels(test_data$City)
 ```
 
 Basic statistics for each variable:
@@ -79,6 +81,23 @@ summary(model)
 train_data_s = cbind(revenue = train_data[, "revenue"], train_data[, grepl( "P+" , names(train_data))])
 model <- lm(revenue ~ .,data = train_data_s)
 summary(model)
+pre_result_train <- predict(model, train_data_s)
+sqrt(sum((pre_result_train - train_data_s$revenue)^2))
+pre_result <- predict(model, test_data)
 ```
 
+SVM
+```{r}
+library('e1071')
+obj <- tune.svm(revenue~., data = subset(train_data, select = -Id), gama = 2^(-10:1), cost = 2^(2:10))
+model <- obj$best.model
+pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))
+pre_result <- predict(model, subset(test_data, select = -Id))
+```
 
+Save prediction to file
+```{r}
+
+write.csv(cbind(Id = test_data$Id, Prediction = pre_result), quote = F, row.names = F, file = "./predict_result.csv")
+```

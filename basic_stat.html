@@ -59,25 +59,27 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 <pre class="r"><code>train_data &lt;- read.csv(&quot;./Data/train.csv&quot;)
 test_data  &lt;- read.csv(&quot;./Data/test.csv&quot;)
 train_data$Open.Date = as.Date(train_data$Open.Date, &quot;%m/%d/%Y&quot;)
-test_data$Open.Date = as.Date(test_data$Open.Date, &quot;%m/%d/%Y&quot;)</code></pre>
+test_data$Open.Date = as.Date(test_data$Open.Date, &quot;%m/%d/%Y&quot;)
+levels(train_data$Type) = levels(test_data$Type)
+levels(train_data$City) = levels(test_data$City)</code></pre>
 <p>Basic statistics for each variable:</p>
 <pre class="r"><code>summary(train_data)</code></pre>
-<pre><code>##        Id        Open.Date                City         City.Group Type   
-##  Min.   :  0   Min.   :1996-05-08   İstanbul:50   Big Cities:78   DT: 1  
-##  1st Qu.: 34   1st Qu.:2007-12-01   Ankara  :19   Other     :59   FC:76  
-##  Median : 68   Median :2010-02-23   İzmir   : 9                   IL:60  
-##  Mean   : 68   Mean   :2009-03-21   Bursa   : 5                          
-##  3rd Qu.:102   3rd Qu.:2011-12-21   Samsun  : 5                          
-##  Max.   :136   Max.   :2014-01-25   Antalya : 4                          
-##                                     (Other) :45                          
-##        P1               P2              P3              P4       
-##  Min.   : 1.000   Min.   :1.000   Min.   :0.000   Min.   :3.000  
-##  1st Qu.: 2.000   1st Qu.:4.000   1st Qu.:4.000   1st Qu.:4.000  
-##  Median : 3.000   Median :5.000   Median :4.000   Median :4.000  
-##  Mean   : 4.015   Mean   :4.409   Mean   :4.318   Mean   :4.372  
-##  3rd Qu.: 4.000   3rd Qu.:5.000   3rd Qu.:5.000   3rd Qu.:5.000  
-##  Max.   :12.000   Max.   :7.500   Max.   :7.500   Max.   :7.500  
-##                                                                  
+<pre><code>##        Id        Open.Date                     City         City.Group
+##  Min.   :  0   Min.   :1996-05-08   Diyarbakır   :50   Big Cities:78  
+##  1st Qu.: 34   1st Qu.:2007-12-01   Ankara       :19   Other     :59  
+##  Median : 68   Median :2010-02-23   Düzce        : 9                  
+##  Mean   : 68   Mean   :2009-03-21   Batman       : 5                  
+##  3rd Qu.:102   3rd Qu.:2011-12-21   Kahramanmaraş: 5                  
+##  Max.   :136   Max.   :2014-01-25   Antalya      : 4                  
+##                                     (Other)      :45                  
+##  Type          P1               P2              P3              P4       
+##  DT: 1   Min.   : 1.000   Min.   :1.000   Min.   :0.000   Min.   :3.000  
+##  FC:76   1st Qu.: 2.000   1st Qu.:4.000   1st Qu.:4.000   1st Qu.:4.000  
+##  IL:60   Median : 3.000   Median :5.000   Median :4.000   Median :4.000  
+##  MB: 0   Mean   : 4.015   Mean   :4.409   Mean   :4.318   Mean   :4.372  
+##          3rd Qu.: 4.000   3rd Qu.:5.000   3rd Qu.:5.000   3rd Qu.:5.000  
+##          Max.   :12.000   Max.   :7.500   Max.   :7.500   Max.   :7.500  
+##                                                                          
 ##        P5              P6               P7               P8        
 ##  Min.   :1.000   Min.   : 1.000   Min.   : 1.000   Min.   : 1.000  
 ##  1st Qu.:1.000   1st Qu.: 2.000   1st Qu.: 5.000   1st Qu.: 4.000  
@@ -441,6 +443,20 @@ summary(model)</code></pre>
 ## Residual standard error: 1717000 on 96 degrees of freedom
 ## Multiple R-squared:  0.3429, Adjusted R-squared:  0.08965 
 ## F-statistic: 1.354 on 37 and 96 DF,  p-value: 0.1216</code></pre>
+<pre class="r"><code>pre_result_train &lt;- predict(model, train_data_s)
+sqrt(sum((pre_result_train - train_data_s$revenue)^2))</code></pre>
+<pre><code>## [1] 16823446</code></pre>
+<pre class="r"><code>pre_result &lt;- predict(model, test_data)</code></pre>
+<p>SVM</p>
+<pre class="r"><code>library('e1071')
+obj &lt;- tune.svm(revenue~., data = subset(train_data, select = -Id), gama = 2^(-10:1), cost = 2^(2:10))
+model &lt;- obj$best.model
+pre_result_train &lt;- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))</code></pre>
+<pre><code>## [1] 15633459</code></pre>
+<pre class="r"><code>pre_result &lt;- predict(model, subset(test_data, select = -Id))</code></pre>
+<p>Save prediction to file</p>
+<pre class="r"><code>write.csv(cbind(Id = test_data$Id, Prediction = pre_result), quote = F, row.names = F, file = &quot;./predict_result.csv&quot;)</code></pre>
 
 
 </div>
