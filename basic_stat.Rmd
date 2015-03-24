@@ -96,6 +96,15 @@ sqrt(sum((pre_result_train - train_data$revenue)^2))
 pre_result <- predict(model, subset(test_data, select = -Id))
 ```
 
+randomForest
+```{r}
+library("randomForest")
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))))
+pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))
+pre_result <- predict(model, subset(test_data, select = -Id))
+```
+
 Save prediction to file
 ```{r}
 

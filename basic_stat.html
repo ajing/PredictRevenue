@@ -453,7 +453,16 @@ obj &lt;- tune.svm(revenue~., data = subset(train_data, select = -Id), gama = 2^
 model &lt;- obj$best.model
 pre_result_train &lt;- predict(model, subset(train_data,select = Open.Date:P37))
 sqrt(sum((pre_result_train - train_data$revenue)^2))</code></pre>
-<pre><code>## [1] 15633459</code></pre>
+<pre><code>## [1] 14196300</code></pre>
+<pre class="r"><code>pre_result &lt;- predict(model, subset(test_data, select = -Id))</code></pre>
+<p>randomForest</p>
+<pre class="r"><code>library(&quot;randomForest&quot;)</code></pre>
+<pre><code>## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
+<pre class="r"><code>model &lt;- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c(&quot;Id&quot;, &quot;City&quot;))))
+pre_result_train &lt;- predict(model, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_result_train - train_data$revenue)^2))</code></pre>
+<pre><code>## [1] 8761444</code></pre>
 <pre class="r"><code>pre_result &lt;- predict(model, subset(test_data, select = -Id))</code></pre>
 <p>Save prediction to file</p>
 <pre class="r"><code>write.csv(cbind(Id = test_data$Id, Prediction = pre_result), quote = F, row.names = F, file = &quot;./predict_result.csv&quot;)</code></pre>
