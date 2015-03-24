@@ -17,6 +17,17 @@ summary(train_data)
 summary(test_data)
 ```
 
+boxplot for revenue and P1-P37
+```{r}
+boxplot(train_data$revenue)
+boxplot(x = train_data[, grepl( "P+" , names(train_data))])
+```
+
+remove the outlier
+```{r}
+train_data = subset(train_data, revenue < 1e7)
+```
+
 PCA analysis
 ```{r}
 train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
@@ -63,3 +74,11 @@ PC3=predict(train_pca)[,3]
 model <- lm(revenue ~ PC1 + PC2 + PC3,data = train_data)
 summary(model)
 ```
+
+```{r}
+train_data_s = cbind(revenue = train_data[, "revenue"], train_data[, grepl( "P+" , names(train_data))])
+model <- lm(revenue ~ .,data = train_data_s)
+summary(model)
+```
+
+
