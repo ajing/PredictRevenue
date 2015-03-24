@@ -62,4 +62,7 @@ PC2=predict(train_pca)[,2]
 PC3=predict(train_pca)[,3]
 model <- lm(revenue ~ PC1 + PC2 + PC3,data = train_data)
 summary(model)
+
+model <- lm(revenue ~ P1 + P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9 + P10 + P11 + P12 + P13 + P13 + P14 + P15 + P16 + P17 + P18 + P19 + P20 + P21 + P22 + P23 + P24 + P25 + P26,data = train_data)
+summary(model)
 ```
