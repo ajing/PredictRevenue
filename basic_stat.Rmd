@@ -85,7 +85,7 @@ train_data_s = cbind(revenue = train_data[, "revenue"], train_data[, grepl( "P+"
 model <- lm(revenue ~ .,data = train_data_s)
 summary(model)
 pre_result_train <- predict(model, train_data_s)
-sqrt(sum((pre_result_train - train_data_s$revenue)^2))
+sqrt(sum((pre_result_train - train_data_s$revenue)^2)/ length(train_data$revenue))
 pre_result <- predict(model, test_data)
 ```
 
@@ -95,7 +95,7 @@ library('e1071')
 obj <- tune.svm(revenue~., data = subset(train_data, select = -Id), gama = 2^(-10:1), cost = 2^(2:10))
 model <- obj$best.model
 pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
-svm_se = sqrt(sum((pre_result_train - train_data$revenue)^2))
+svm_se = sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 svm_se
 pre_result <- predict(model, subset(test_data, select = -Id))
 ```
@@ -103,20 +103,41 @@ pre_result <- predict(model, subset(test_data, select = -Id))
 Backwards feature selection for SVM
 ```{r}
 all_var <- colnames(subset(train_data, select = Open.Date:P37))
-var_se  <- data.frame(var_name = all_var)
+iteration <- 10
+var_se  <- data.frame(merge(all_var, 1:iteration, all = T), 0)
+colnames(var_se) <- c("var_name", "se_ind", "se")
+
 for (variable in all_var){
-  obj <- tune.svm(revenue~., data = train_data[, !(colnames(train_data) %in% c("Id", variable))], gama = 2^(-10:1), cost = 2^(2:10))
-  model <- obj$best.model
-  pre_result_train <- predict(model, subset(train_data, select = Open.Date:P37))
-  var_se[var_se$var_name == variable, "se"] = sqrt(sum((pre_result_train - train_data$revenue)^2))
+  se = matrix(0, iteration, 1)
+  for (i in 1:iteration){
+    train_set <- train_data[, !(colnames(train_data) %in% c("Id", variable))]
+    sam_index <- sample.int(nrow(train_set), replace=TRUE)
+    obj <- tune.svm(revenue~., data = train_set[sam_index,], gama = 2^(-10:1), cost = 2^(2:10))
+    model <- obj$best.model
+    pre_result_train <- predict(model, data = train_set[-sam_index,])
+    se = sqrt(sum((pre_result_train - train_data$revenue)^2) / length(train_data$revenue))
+    var_se[var_se$var_name == variable & var_se$se_ind == i, "se"] <- se
+  }
 }
 ```
 
 barplot for each variable
 ```{r}
 library(ggplot2)
-var_se$se = var_se$se - svm_se
-ggplot(var_se, aes(x = var_name, y = se)) + geom_bar(stat = "identity")
+library(dplyr)
+
+var_se <- transform(var_se, variable=reorder(variable, -value) ) 
+var_se %>%
+  group_by(var_name) %>%
+  summarise(median = median(se))
+
+ggplot(var_se, aes(x = var_name, y = se)) + geom_boxplot()
+
+var_se$se_median = var_se$se_median - svm_se
+var_se$se_max = var_se$se_max - svm_se
+var_se$se_min = var_se$se_min - svm_se
+ggplot(var_se, aes(x = var_name, y = se_median, ymin = se_min, ymax = se_max)) + geom_pointrange(aes(col = var_name), position=position_dodge(width=0.30))  + ylab("Odds ratio & 95% CI") + geom_hline(aes(yintercept = 1)) + xlab("") + scale_y_log10()
+
 ```
 
 only select columns which can decrease standard error
@@ -137,8 +158,9 @@ plot(backward_se)
 The current best SVM model
 ```{r}
 bestcut = which(backward_se == min(backward_se))
-pre_train_svm <- predict(model_list[[bestcut]], subset(train_data,select = Open.Date:P37))
-sqrt(sum((pre_train_svm - train_data$revenue)^2))
+model_svm = model_list[[bestcut]]
+pre_train_svm <- predict(model_svm, subset(train_data,select = Open.Date:P37))
+sqrt(sum((pre_train_svm - train_data$revenue)^2)/ length(train_data$revenue))
 ```
 
 Bagging (not much improvement for random forest, also not much improvement for SVM)
@@ -165,7 +187,7 @@ randomForest
 library("randomForest")
 model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200)
 pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
-sqrt(sum((pre_result_train - train_data$revenue)^2))
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 pre_result <- predict(model, subset(test_data, select = -Id))
 ```
 
@@ -180,23 +202,38 @@ plot(model$importance)
 hist(model$importance[,"%IncMSE"])
 
 plot(model$importanceSD)
+```
 
-dim(model$importance[model$importanceSD > 1.5e10, ])
+Backward selection
+```{r}
+backward_se = matrix(0, 20, 1)
+model_list  = list()
+for (i in 1:20){
+  selected <- as.character(var_se[order(-var_se$se),]$var_name)[1:(length(var_se$var_name) - i)]
+  model <- randomForest(revenue~.,data=subset(train_data, select = names(train_data) %in% c("revenue", selected)))
+  pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+  backward_se[i] = sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+  model_list[[i]] = model
+}
+plot(backward_se)
+```
 
-selected <- rownames(model$importance[model$importanceSD > 1.5e10, ])
+Select the model from backward selection
+```{r}
+bestcut = which(backward_se == min(backward_se))
 
-model_rf <- randomForest(revenue~.,data=subset(train_data, select = names(train_data) %in% c("revenue", selected)))
+model_rf = model_list[[bestcut]]
 pre_train_forest <- predict(model_rf, subset(train_data,select = Open.Date:P37))
-sqrt(sum((pre_train_forest - train_data$revenue)^2))
+sqrt(sum((pre_train_forest - train_data$revenue)^2) / length(train_data$revenue))
 
 combine_score = data.frame(revenue = train_data$revenue, svm = pre_train_svm, rforest = pre_train_forest)
 combine_model = glm(revenue ~ rforest + svm, data = combine_score)
 
 pre_train_combine <- predict(combine_model, combine_score)
-sqrt(sum((pre_train_combine - train_data$revenue)^2))
+sqrt(sum((pre_train_combine - train_data$revenue)^2) / length(train_data$revenue))
 
 pre_test_svm <- predict(model_svm, subset(test_data, select = -Id))
-pre_test_forest <- predict(model_forest, subset(test_data, select = -Id))
+pre_test_forest <- predict(model_rf, subset(test_data, select = -Id))
 combine_score = data.frame(svm = pre_test_svm, rforest = pre_test_forest)
 pre_result <- predict(combine_model, combine_score)
 ```
