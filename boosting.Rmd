@@ -1,0 +1,67 @@
+---
+title: "boosting"
+author: "ajing"
+date: "04/03/2015"
+output: html_document
+---
+
+Cleaning and some basic operation on data
+```{r}
+train_data <- read.csv("./Data/train.csv")
+test_data  <- read.csv("./Data/test.csv")
+train_data$Open.Date = as.numeric(as.Date(train_data$Open.Date, "%m/%d/%Y"))
+test_data$Open.Date = as.numeric(as.Date(test_data$Open.Date, "%m/%d/%Y"))
+levels(train_data$Type) = levels(test_data$Type)
+levels(train_data$City) = levels(test_data$City)
+```
+
+remove the outlier
+```{r}
+train_data = subset(train_data, revenue < 1e7)
+```
+
+Only keep first 5 PCA (sd > 1)
+```{r}
+train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
+train_lowdim= cbind(train_data[, !grepl( "P+" , names(train_data))], predict(train_pca)[,1:5])
+dim(PC)
+```
+
+Testing set dimension reduction
+```{r}
+test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
+```
+
+
+
+randomForest
+```{r}
+library("randomForest")
+model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
+pre_result_train[pre_result_train > 5e6] = 2.36 * pre_result_train[pre_result_train > 5e6] - 5.724e+06
+linear_data  <- data.frame(revenue = train_data$revenue, train = log(pre_result_train))
+linear_model <- glm(revenue ~ train, data = linear_data)
+pre_result_train <- predict(linear_model, newdata = linear_data)
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+pre_result <- predict(model, subset(test_lowdim, select = -Id))
+```
+
+Gradient Boosted Trees
+
+```{r}
+library("gbm")
+model <- gbm(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), n.trees=1000, interaction.depth=2)
+pre_result_train <- predict.gbm(model, subset(train_data,select = Open.Date:P37), type="response", n.trees = 1000)
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+
+pre_result <- predict.gbm(model, test_data, type="response", n.trees=100)
+```
+
+
+
+Save prediction to file
+```{r}
+write.csv(cbind(Id = test_data$Id, Prediction = pre_result), quote = F, row.names = F, file = "./predict_result.csv")
+```
+
