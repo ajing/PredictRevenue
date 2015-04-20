@@ -120,5 +120,11 @@ sqrt(sum((exp(pre_result_train) - exp(train_data$revenue))^2)/ length(train_data
 pre_result <- predict(model, subset(test_data, select = -Id))
 ```
 
+Simple SVM
+```{r}
+
+```
+
+
 
 
