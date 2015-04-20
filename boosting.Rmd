@@ -24,7 +24,6 @@ Only keep first 5 PCA (sd > 1)
 ```{r}
 train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
 train_lowdim= cbind(train_data[, !grepl( "P+" , names(train_data))], predict(train_pca)[,1:5])
-dim(PC)
 ```
 
 Testing set dimension reduction
@@ -32,19 +31,43 @@ Testing set dimension reduction
 test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
 ```
 
+Seperate data set to > 5.1e6 and < 5.1e6
+```{r}
+train_pca <-  prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
+biplot(train_pca,choices=c(1,2),cex=0.5, main = "Train data biplot", color = c("red", "green")[1+train_data$revenue > 5.1e6])
+library(ggbiplot)
+ggbiplot(train_pca, groups = train_data$revenue > 5.1e6, ellipse = TRUE)
+
+summary(subset(train_data, revenue > 5.1e6))
+summary(subset(train_data, revenue < 5.1e6))
+```
+
 
 
 randomForest
 ```{r}
 library("randomForest")
-model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+train_model <- function(train_lowdim){
+model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 15)
 pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
-pre_result_train[pre_result_train > 5e6] = 2.36 * pre_result_train[pre_result_train > 5e6] - 5.724e+06
-linear_data  <- data.frame(revenue = train_data$revenue, train = log(pre_result_train))
-linear_model <- glm(revenue ~ train, data = linear_data)
-pre_result_train <- predict(linear_model, newdata = linear_data)
-sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
-pre_result <- predict(model, subset(test_lowdim, select = -Id))
+print(sqrt(sum((pre_result_train - train_lowdim$revenue)^2)/ length(train_lowdim$revenue)))
+print(sqrt(sum((pre_result_train - train_lowdim$revenue)^2)/ length(train_lowdim$revenue)))
+plot(pre_result_train, train_lowdim$revenue)
+model
+}
+train_model <- train_model(train_lowdim)
+train_model_small <- train_model(subset(train_lowdim, revenue <= 5.1e6))
+train_model_large <- train_model(subset(train_lowdim, revenue > 5.1e6))
+
+pre_result_s <- predict(train_model_small, subset(test_lowdim, select = -Id))
+pre_result_l <- predict(train_model_large, subset(test_lowdim, select = -Id))
+plot(pre_result_s, pre_result_l)
+hist(train_lowdim$revenue)
+hist(c(pre_result_s,pre_result_l))
+hist(pre_result_s + pre_result_l)
+
+
+pre_result[pre_result > 5.1e6] <- predict(train_model_large, subset(test_lowdim, pre_result > 5.1e6, select = -Id))
 ```
 
 Gradient Boosted Trees
@@ -55,7 +78,7 @@ model <- gbm(revenue~.,data=subset(train_data, select = !(names(train_data) %in%
 pre_result_train <- predict.gbm(model, subset(train_data,select = Open.Date:P37), type="response", n.trees = 1000)
 sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 
-pre_result <- predict.gbm(model, test_data, type="response", n.trees=100)
+pre_result <- predict.gbm(model, test_data, type="response", n.trees=1000)
 ```
 
 
