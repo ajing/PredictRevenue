@@ -1,0 +1,124 @@
+---
+title: "data_preprocess"
+author: "ajing"
+date: "04/19/2015"
+output: html_document
+---
+
+
+Cleaning and some basic operation on data
+```{r}
+train_data <- read.csv("./Data/train.csv")
+test_data  <- read.csv("./Data/test.csv")
+train_data$Open.Date = as.numeric(as.Date(train_data$Open.Date, "%m/%d/%Y"))
+test_data$Open.Date = as.numeric(as.Date(test_data$Open.Date, "%m/%d/%Y"))
+levels(train_data$Type) = levels(test_data$Type)
+levels(train_data$City) = levels(test_data$City)
+#remove the outlier
+train_data = subset(train_data, revenue < 1e7)
+#remove Id and City
+train_data <- subset(train_data, select = !(names(train_data) %in% c("Id", "City")))
+```
+
+Only keep first 5 PCA (sd > 1)
+```{r}
+train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
+train_lowdim= cbind(train_data[, !grepl( "P+" , names(train_data))], predict(train_pca)[,1:5])
+```
+
+Testing set dimension reduction
+```{r}
+test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
+```
+
+
+```{r}
+pre_pro <- function(myData){
+  #Consolidate Cities
+  all_cities <- 
+  myData$City                                      <- as.character(myData$City)
+  myData$City[myData$City.Group == "Other"]        <- "Other"
+  myData$City[myData$City == unique(myData$City)[4]] <- unique(myData$City)[2]
+  myData$City                                      <- factor(myData$City, levels = c("Diyarbakır", "Ankara", "İstanbul", "Other"))
+  myData$City.Group                                <- NULL
+  
+  #Consolidate Types
+  myData$Type <- as.character(myData$Type)
+  myData$Type[myData$Type=="DT"] <- "IL"
+  myData$Type[myData$Type=="MB"] <- "FC"
+  myData$Type <- as.factor(myData$Type)
+  # log transform
+  myData[, paste("P", 1:37, sep="")] <- log(1 +myData[, paste("P", 1:37, sep="")])
+  if("revenue" %in% names(myData)) {
+    myData$revenue <- log(myData$revenue)
+  }
+  myData
+}
+train_data <- pre_pro(train_data)
+test_data <- pre_pro(test_data)
+
+train_lowdim <- pre_pro(train_lowdim)
+test_lowdim <- pre_pro(test_lowdim)
+```
+
+
+Feature selection with Boruta
+```{r}
+library(Boruta)
+important <- Boruta(revenue~., data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))))
+
+```
+
+randomForest with variable selection
+```{r}
+library("varSelRF")
+plot(model)
+result <- rfcv(subset(train_data, select = !(names(train_data) %in% c("Id", "City", "revenue"))), train_data$revenue, cv.fold=10, recursive = T)
+with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
+
+plot(model$importance)
+hist(model$importance[,"%IncMSE"])
+
+plot(model$importanceSD)
+```
+
+Backward selection
+```{r}
+library("varSelRF")
+result <- rfcv(subset(train_data, select = !(names(train_data) %in% c("Id", "City", "revenue"))), train_data$revenue, cv.fold=10, recursive = T)
+with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
+
+plot(model$importance)
+hist(model$importance[,"%IncMSE"])
+
+plot(model$importanceSD)
+
+all_var <- colnames(subset(train_data, select = Open.Date:P37))
+iteration <- 10
+var_se  <- data.frame(merge(all_var, 1:iteration, all = T), 0)
+
+backward_se = matrix(0, 20, 1)
+model_list  = list()
+for (i in 1:20){
+  selected <- as.character(var_se[order(-var_se$se),]$var_name)[1:(length(var_se$var_name) - i)]
+  
+  model <- randomForest(revenue~.,data=subset(train_data, select = names(train_data) %in% c("revenue", selected)), maxnodes = 20)
+  pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
+  backward_se[i] = sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+  model_list[[i]] = model
+}
+plot(backward_se)
+```
+
+Simple RF
+```{r}
+model <- randomForest(revenue~.,data=train_data[, c(important$finalDecision != "Rejected", T)], importance = T, ntree = 200, maxnodes = 20)
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+pre_result_train <- predict(model, train_data)
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+sqrt(sum((exp(pre_result_train) - exp(train_data$revenue))^2)/ length(train_data$revenue))
+pre_result <- predict(model, subset(test_data, select = -Id))
+```
+
+
+
