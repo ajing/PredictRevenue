@@ -15,6 +15,12 @@ levels(train_data$Type) = levels(test_data$Type)
 levels(train_data$City) = levels(test_data$City)
 ```
 
+revenue cut for correction
+```{r}
+revenue_cut = 7e6
+train_data$revenue.c = factor(c("small", "large") [ 1 + (train_data$revenue > revenue_cut)])
+```
+
 remove the outlier
 ```{r}
 train_data = subset(train_data, revenue < 1e7)
@@ -28,7 +34,6 @@ function(train_data, test_data){
   #Testing set dimension reduction
   test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
 }
-
 ```
 
 
@@ -43,12 +48,33 @@ plot(model$importanceSD)
 selected <- names(model$importanceSD[order(-model$importanceSD)][0:-10])
 ```
 
+
 randomForest
 ```{r}
 library("randomForest")
 model <- randomForest(revenue~.,data=subset(train_data, select = names(train_data) %in% c("revenue", "City.Group", "Open.Date", selected)), importance = T, ntree = 200, maxnodes = 20)
 pre_result_train <- predict(model, subset(train_data, select = names(train_data) %in% c("City.Group", "Open.Date", selected)))
+```
 
+SVM for small/large revenue assignment
+```{r}
+library('e1071')
+obj <- tune.svm(revenue.c~., data = subset(train_lowdim, select = !(colnames(train_lowdim) %in% c("Id", "revenue"))), gama = 2^(-10:1), cost = 2^(2:10))
+model <- obj$best.model
+pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
+svm_se = sqrt(sum((pre_result_train == train_data$revenue.c)^2)/ length(train_data$revenue))
+
+```
+
+random forest for group assignment
+```{r}
+model_s <- randomForest(revenue.c~., data = subset(train_lowdim, select = !(colnames(train_lowdim) %in% c("Id", "revenue", "City", "revenue.g"))), ntree = 100, maxnodes = 15)
+pre_result_train <- predict(model_s, subset(train_lowdim,select = Open.Date:PC5))
+train_lowdim$revenue.g <- predict(model_s, subset(train_lowdim,select = Open.Date:PC5))
+table(pre_result_train, train_data$revenue.c)
+```
+
+```{r}
 model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
 pre_result_train <- predict(model, train_data)
 sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
@@ -60,21 +86,105 @@ abline(a=0, b=1)
 randomForest with PCA
 ```{r}
 library("randomForest")
+get_model <- function(train_lowdim){
+  model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City", "revenue.c"))), importance = T, ntree = 10, maxnodes = 5)
+  pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
+  print(sqrt(sum((pre_result_train - train_lowdim$revenue)^2)/ length(train_lowdim$revenue)))
+  model
+}
+model_small  <- get_model(subset(train_lowdim, revenue < revenue_cut))
+model_large  <- get_model(subset(train_lowdim, revenue > revenue_cut))
+
+model  <- get_model(train_lowdim)
+
+model  <- get_model(subset(train_lowdim, select = -revenue.g))
+
+predict_with_model <- function(test_lowdim){
+pre_rev_result <- predict(model, subset(test_lowdim, select = !(names(test_lowdim) %in% c("Id", "City", "revenue.c"))))
+pre_result <- matrix(0, dim(test_lowdim)[1], 1)
+pre_result[pre_rev_result == "large",] <- predict(model_large, subset(test_lowdim[pre_rev_result == "large", ], select = -Id))
+pre_result[pre_rev_result == "small",] <- predict(model_small, subset(test_lowdim[pre_rev_result == "small", ], select = -Id))
+pre_result
+}
+pre_result <- predict_with_model(train_lowdim)
+plot(pre_result, train_lowdim$revenue)
+
+library(gdata)
+pre_result <- unmatrix(predict_with_model(test_lowdim))
+```
+
+normal randomForest
+```{r}
+library("randomForest")
 model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
 pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
-pre_result_train[pre_result_train > 5e6] = 2.36 * pre_result_train[pre_result_train > 5e6] - 5.724e+06
-linear_data  <- data.frame(revenue = train_data$revenue, train = log(pre_result_train))
-linear_model <- glm(revenue ~ train, data = linear_data)
-pre_result_train <- predict(linear_model, newdata = linear_data)
 sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+plot(pre_result_train, train_data$revenue)
+abline(a=0,b=1)
 pre_result <- predict(model, subset(test_lowdim, select = -Id))
 ```
+
+
+SVM as 2-level model
+```{r}
+get_model <- function(train_lowdim){
+  model <- svm(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City", "revenue.c"))))
+  pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
+  print(sqrt(sum((pre_result_train - train_lowdim$revenue)^2)/ length(train_lowdim$revenue)))
+  model
+}
+model_small  <- get_model(subset(train_lowdim, revenue <= revenue_cut))
+model_large  <- get_model(subset(train_lowdim, revenue > revenue_cut))
+
+
+predict_with_model <- function(test_lowdim){
+pre_rev_result <- predict(model, subset(test_lowdim, select = !(names(test_lowdim) %in% c("Id", "City", "revenue.c"))))
+pre_result <- matrix(0, dim(test_lowdim)[1], 1)
+pre_result[pre_rev_result == "large",] <- predict(model_large, subset(test_lowdim[pre_rev_result == "large", ], select = -Id))
+pre_result[pre_rev_result == "small",] <- predict(model_small, subset(test_lowdim[pre_rev_result == "small", ], select = -Id))
+pre_result
+}
+pre_result <- predict_with_model(train_lowdim)
+plot(pre_result, train_lowdim$revenue)
+abline(a=0,b=1)
+```
+
+
+
+randomForest with one more attribute revenue.g
+```{r}
+get_model <- function(train_lowdim){
+  model <- svm(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City", "revenue.c"))))
+  pre_result_train <- predict(model, subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City", "revenue.c"))))
+  print(sqrt(sum((pre_result_train - train_lowdim$revenue)^2)/ length(train_lowdim$revenue)))
+  model
+}
+model  <- get_model(train_lowdim)
+pre_result <- predict(model, train_lowdim)
+plot(pre_result, train_lowdim$revenue)
+abline(a=0,b=1)
+
+
+test_lowdim$revenue.g <- predict(model_s, subset(test_lowdim,select = Open.Date:PC5))
+pre_result <- predict(model, test_lowdim)
+
+
+model <- randomForest(revenue~.,data=subset(train_lowdim, select = !(names(train_lowdim) %in% c("Id", "City", "revenue.c"))), importance = T, ntree = 100, maxnodes = 10)
+pre_result_train <- predict(model, subset(train_lowdim,select = !(names(train_lowdim) %in% c("Id", "City"))))
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+plot(pre_result_train, train_lowdim$revenue)
+abline(a=0,b=1)
+
+pre_result <- predict(model, test_lowdim)
+
+```
+
 
 Gradient Boosted Trees
 
 ```{r}
 library("gbm")
-model <- gbm(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), n.trees=1000, interaction.depth=2)
+model <- gbm(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), n.trees=1000, interaction.depth=3)
 pre_result_train <- predict.gbm(model, subset(train_data,select = Open.Date:P37), type="response", n.trees = 1000)
 sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 

@@ -144,6 +144,7 @@ only select columns which can decrease standard error
 ```{r}
 backward_se = matrix(0, 20, 1)
 model_list  = list()
+
 for (i in 1:20){
   selected <- as.character(var_se[order(-var_se$se),]$var_name)[1:(length(var_se$var_name) - i)]
   obj <- tune.svm(revenue~., data = subset(train_data, select = c("revenue", selected)), gama = 2^(-10:1), cost = 2^(2:10))
@@ -187,8 +188,8 @@ randomForest
 library("randomForest")
 model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
 pre_result_train <- predict(model, subset(train_data,select = Open.Date:P37))
-sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
-pre_result <- predict(model, subset(test_data, select = -Id))
+sqrt(sum((exp(pre_result_train) - exp(train_data$revenue))^2)/ length(train_data$revenue))
+pre_result <- exp(predict(model, subset(test_data, select = -Id)))
 ```
 
 randomForest with variable selection
