@@ -131,10 +131,11 @@ plot(rev_dist)
 
 Simple RF
 ```{r}
-model <- randomForest(revenue ~.,data=train_data[, c(important$finalDecision != "Rejected", T)], importance = T, ntree = 200, maxnodes = 20)
-#model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
-pre_result_train <- transformdist(predict(model, train_data), rev_dist$estimat)
-#pre_result_train <- predict(model, train_data)
+model <- randomForest(revenue~.,data=train_data[, c(important$finalDecision != "Rejected", T)], importance = T, ntree = 200, maxnodes = 20)
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+pre_result_train <- predict(model, train_data)
+plot(pre_result_train, train_data$revenue, col = c("red", "blue")[1 + (train_data$City.Group == "Other")])
+abline(0,1)
 sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 sqrt(sum((exp(pre_result_train) - exp(train_data$revenue))^2)/ length(train_data$revenue))
 

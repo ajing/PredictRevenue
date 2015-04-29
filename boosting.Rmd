@@ -30,13 +30,32 @@ train_data = subset(train_data, revenue < 1e7)
 
 Only keep first 5 PCA (sd > 1)
 ```{r}
-train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
-train_lowdim= cbind(train_data[, !grepl( "P+" , names(train_data))], predict(train_pca)[,1:5])
+function(train_data, test_data){
+  train_pca <- prcomp(train_data[, grepl( "P+" , names(train_data))], center = TRUE, scale = TRUE) 
+  train_lowdim= cbind(train_data[, !grepl( "P+" , names(train_data))], predict(train_pca)[,1:5])
+  #Testing set dimension reduction
+  test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
+}
 ```
 
-Testing set dimension reduction
+
+variable selection in random forest
 ```{r}
-test_lowdim = cbind(test_data[, !grepl( "P+" , names(test_data))], predict(train_pca, newdata = test_data[, grepl( "P+" , names(test_data))])[,1:5])
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+
+library("varSelRF")
+result <- rfcv(subset(train_data, select = !(names(train_data) %in% c("Id", "City", "revenue"))), train_data$revenue, cv.fold=10, recursive = T)
+with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
+plot(model$importanceSD)
+selected <- names(model$importanceSD[order(-model$importanceSD)][0:-10])
+```
+
+
+randomForest
+```{r}
+library("randomForest")
+model <- randomForest(revenue~.,data=subset(train_data, select = names(train_data) %in% c("revenue", "City.Group", "Open.Date", selected)), importance = T, ntree = 200, maxnodes = 20)
+pre_result_train <- predict(model, subset(train_data, select = names(train_data) %in% c("City.Group", "Open.Date", selected)))
 ```
 
 SVM for small/large revenue assignment
@@ -73,9 +92,16 @@ train_lowdim$revenue.g <- predict(model_s, subset(train_lowdim,select = Open.Dat
 table(pre_result_train, train_data$revenue.c)
 ```
 
+```{r}
+model <- randomForest(revenue~.,data=subset(train_data, select = !(names(train_data) %in% c("Id", "City"))), importance = T, ntree = 200, maxnodes = 20)
+pre_result_train <- predict(model, train_data)
+sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
+pre_result <- predict(model, newdata = test_data)
+plot(pre_result_train, train_data$revenue)
+abline(a=0, b=1)
+```
 
-
-randomForest
+randomForest with PCA
 ```{r}
 library("randomForest")
 get_model <- function(train_lowdim){
