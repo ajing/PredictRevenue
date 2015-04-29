@@ -19,6 +19,8 @@ revenue cut for correction
 ```{r}
 revenue_cut = 7e6
 train_data$revenue.c = factor(c("small", "large") [ 1 + (train_data$revenue > revenue_cut)])
+# another way to classify
+train_data$revenue.c = c(-1, 1) [ 1 + (train_data$revenue > revenue_cut)]
 ```
 
 remove the outlier
@@ -46,6 +48,22 @@ pre_result_train <- predict(model, subset(train_lowdim,select = Open.Date:PC5))
 svm_se = sqrt(sum((pre_result_train == train_data$revenue.c)^2)/ length(train_data$revenue))
 
 ```
+
+Logistic model for group assignment
+```{r}
+model <- glm(revenue.c ~ ., data = subset(train_data, select = -revenue), family = "binomial")
+summary(model)
+# did not work
+```
+
+penalizedSVM for feature selection
+```{r}
+library('penalizedSVM')
+# train data
+ff <- scadsvc(x = as.matrix(subset(train_data, select = !(colnames(train_data) %in% c("Id", "revenue", "revenue.c", "City")))), y=train_data$revenue.c, lambda=0.01)
+print(str(ff))
+```
+
 
 random forest for group assignment
 ```{r}
@@ -164,8 +182,6 @@ sqrt(sum((pre_result_train - train_data$revenue)^2)/ length(train_data$revenue))
 
 pre_result <- predict.gbm(model, test_data, type="response", n.trees=100)
 ```
-
-
 
 Save prediction to file
 ```{r}
